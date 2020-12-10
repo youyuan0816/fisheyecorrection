@@ -1,0 +1,185 @@
+<!--
+ * @Author: your name
+ * @Date: 2020-12-10 09:45:05
+ * @LastEditTime: 2020-12-10 17:20:56
+ * @LastEditors: Please set LastEditors
+ * @Description: In User Settings Edit
+ * @FilePath: \practice\opencv\index.html
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>opencv</title>
+    <style>
+        .inputOutput {
+            float: left;
+            margin: 10px;
+        }
+    </style>
+</head>
+<body>
+    <p id='status'>opencv.js is loading....</p>
+    <div class="inputOutput">
+        <div class="caption">
+            scrImg
+            <input type="file" id='inputFile' name='file'>
+        </div>
+        <img id='srcImg' alt="No Image">
+    </div>
+    <div class="inputOutput">
+        <div class="caption">dstImg</div>
+        <canvas id="dstImg"></canvas>
+    </div>
+    <script>
+        // 读取图片
+        let imgElement = document.getElementById('srcImg');
+        let fileElement = document.getElementById('inputFile');
+        fileElement.addEventListener('change', (e) => {
+            imgElement.src = URL.createObjectURL(e.target.files[0]);
+        }, false);
+        // 读取鱼眼图片
+        let fishImg = null;
+        // 设置灰度阈值
+        let T = 30;
+        // 转换为灰度图片
+        let img_gray = null;
+
+        // 转换为灰度图
+        imgElement.onload = function() {
+            fishImg=cv.imread(imgElement);
+            console.log(fishImg)
+            let gray = new cv.Mat();
+            cv.cvtColor(fishImg, gray, cv.COLOR_RGBA2GRAY);
+            img_gray = gray;
+            cv.imshow('dstImg', gray);
+            // fishImg.delete();
+            // gray.delete();
+            console.log('image width: ' + fishImg.cols + '\n' +
+            'image height: ' + fishImg.rows + '\n' +
+            'image size: ' + fishImg.size().width + '*' + fishImg.size().height + '\n' +
+            'image depth: ' + fishImg.depth() + '\n' +
+            'image channels ' + fishImg.channels() + '\n' +
+            'image type: ' + fishImg.type() + '\n');
+            kuaisusaomiao();
+        }
+        // 图像的快速扫描
+        function kuaisusaomiao() {
+            const {rows, cols, data} = img_gray;
+            let top, bottom, left, right = null;
+            
+            // 从上向下扫描
+           for (let i = 0; i < rows; i++) {
+               for (let j = 0; j < cols; j++) {
+                   let pixel = img_gray.ucharPtr(i, j)
+                //    lightness(pixel[0], pixel[1], pixel[2])
+                   if (pixel >= T) {
+                       if (img_gray.ucharPtr(i + 1, j) >= T) {
+                        //    console.log(img_gray.ucharPtr(i, j))
+                           top = i;
+                           break;
+                       }
+                   }
+               }
+               if (top) break;
+           } 
+           console.log('top', top)
+        //    从下到上扫描
+        {
+            for (let i = rows - 1; i > -1; i--) {
+               for (let j = 0; j < cols; j++) {
+                   let pixel = img_gray.ucharPtr(i, j)
+                   if (pixel >= T) {
+                       if (img_gray.ucharPtr(i - 1, j) >= T) {
+                            bottom = i;
+                           break;
+                       }
+                   }
+               }
+               if (bottom) break;
+           } 
+            console.log('bottom', bottom);
+        }
+        for (let j = 0; j < cols; j++) {
+            for (let i = top; i < bottom; i++) {
+                if (img_gray.ucharPtr(i, j) >= T) {
+                    if (img_gray.ucharPtr(i, j+1) >= T) {
+                        left = j;
+                        break;
+                    }
+                }
+            }
+            if (left) break;
+        }
+        console.log('left', left)
+        console.log(cols)
+        for (let j = cols - 1; j > -1; j--) {
+            for (let i = top; i < bottom; i++) {
+                if (img_gray.ucharPtr(i,j) >= T) {
+                    if (img_gray.ucharPtr(i, j -1) >= T) {
+                        right = j;
+                        break;
+                    }
+                }
+            }
+            if (right) break;
+        }
+        console.log('right', right)
+
+        // 计算有效区域半径
+        let R = Math.max((bottom - top) / 2, (right - left) / 2);
+        console.log('R=', R)
+        // 提取有效区域
+        console.log(left, right, top, bottom)
+        // x y w h
+        let rect = new cv.Rect(left, top, right-left, bottom - top)
+        let img_valid = fishImg.roi(rect)
+        cv.imshow('dstImg', img_valid)
+        // 创建初始值是0的缓冲池
+        let buffer = new cv.Mat.zeros(img_valid.rows, img_valid.cols, img_valid.type());
+        let n = img_valid.rows;
+        let m = img_valid.cols;
+        console.log(n, m)
+        x = parseInt(n / 2); // 获取图片中心点(x, y)
+        y = parseInt(m / 2);
+        // R = y;
+        // 经纬度矫正鱼眼
+        for (let u = 0; u < m; u++) {
+            for (let v = 0; v < n; v++) {
+                let i = u;
+                const RS = Math.round((Math.sqrt(R*R - (y - u) * (y - u)) * (v - x)) / R + x);
+                let j = RS;
+                // console.log(j)
+                if (R * R - (y - u) * (y - u) < 0)
+                    continue;
+                let pixel = img_valid.ucharPtr(i, j);
+                // 置换像素点
+                buffer.ucharPtr(u, v)[0] = pixel[0];
+                buffer.ucharPtr(u, v)[1] = pixel[1];
+                buffer.ucharPtr(u, v)[2] = pixel[2]
+                buffer.ucharPtr(u, v)[3] = pixel[3]
+            }
+        }
+
+        // console.log(buffer)
+        cv.imshow('dstImg', buffer)
+        }
+       
+        // 从左到右扫描
+        // for (let j = 0; j < data.length; j+= s)
+
+        // 从右到左扫描
+
+        // 加载opencv.js
+        function onOpenCvReady() {
+            document.getElementById('status').innerHTML = 'opencv.js is ready'
+        }
+        function lightness(r, g, b) {
+            console.log(r, g, b)
+            // return 0.59 * r + 0.22 * g + 0.3 * b;
+        }
+    </script>
+    <script async src="./opencvjs/opencv.js" onload="onOpenCvReady();" type="text/javascript"></script>
+</body>
+</html>
